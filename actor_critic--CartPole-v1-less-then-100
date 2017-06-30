@@ -3,6 +3,7 @@ import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense, Activation
 from keras.optimizers import Adam
+from collections import deque
 import gym
 def all_nn(
     yinput=[[4,1],[4,1]],
@@ -30,6 +31,7 @@ class Agent:
         self.actor,self.critic  = all_nn(yinput=[[state_size,1],[state_size,1]])
         self.epsilon = 1
         self.gamma = 0.96
+        self.memory=deque(maxlen=2000)
     def select_move(self, state):
         if 1-self.epsilon > random.random():
             return np.argmax(self.actor.predict(state, batch_size=32, verbose=0))
@@ -37,10 +39,12 @@ class Agent:
     def eval(self, state):
         return self.critic.predict(state, verbose=0)
     def update(self, state, action, true_reward):
-        actor_reward = self.actor.predict(state)
-        actor_reward[0][action] = true_reward
-        self.critic.fit(state, true_reward, verbose=0)
-        self.actor.fit(state, actor_reward, verbose=0)
+        minibatch = random.sample(self.memory, 20)
+        for state, action, true_reward in minibatch:
+            actor_reward = self.actor.predict(state)
+            actor_reward[0][action] = true_reward
+            self.critic.fit(state, true_reward, verbose=0)
+            self.actor.fit(state, actor_reward, verbose=0)
         self.epsilon*=0.999
 def main999():
     EPISODES = 5000#5000
@@ -60,9 +64,9 @@ def main999():
                 times +=1
                 action = agent.select_move(np.matrix(state))
                 next_state, reward, done , _ = env.step(action)
-                agent.update(np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state)))
+                agent.memory.append((np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state))))
                 state = next_state
-                if done:
-                    print(times)
-                    times=1
+            print(times)
+            times=1
+            agent.update(np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state)))
 main999()
