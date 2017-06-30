@@ -57,9 +57,12 @@ def main999():
             action = agent.select_move(np.matrix(state))
             state, reward, done, _ = env.step(action)
             while not done:
+                times +=1
                 action = agent.select_move(np.matrix(state))
                 next_state, reward, done , _ = env.step(action)
                 agent.update(np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state)))
                 state = next_state
-               [ print(times) & times =1 if done]
+                if done:
+                    print(times)
+                    times=1
 main999()
