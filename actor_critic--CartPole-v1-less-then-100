@@ -3,7 +3,6 @@ import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense, Activation
 from keras.optimizers import Adam
-from collections import deque
 import gym
 def all_nn(
     yinput=[[4,1],[4,1]],
@@ -31,42 +30,36 @@ class Agent:
         self.actor,self.critic  = all_nn(yinput=[[state_size,1],[state_size,1]])
         self.epsilon = 1
         self.gamma = 0.96
-        self.memory=deque(maxlen=2000)
     def select_move(self, state):
-        if 1-self.epsilon > random.random():
+        if 1-self.epsilon+0.00001 > random.random():
             return np.argmax(self.actor.predict(state, batch_size=32, verbose=0))
         return random.randrange(self.action_size)
     def eval(self, state):
         return self.critic.predict(state, verbose=0)
     def update(self, state, action, true_reward):
-        minibatch = random.sample(self.memory, 20)
-        for state, action, true_reward in minibatch:
-            actor_reward = self.actor.predict(state)
-            actor_reward[0][action] = true_reward
-            self.critic.fit(state, true_reward, verbose=0)
-            self.actor.fit(state, actor_reward, verbose=0)
+        actor_reward = self.actor.predict(state)
+        actor_reward[0][action] = true_reward
+        self.critic.fit(state, true_reward, verbose=0)
+        self.actor.fit(state, actor_reward, verbose=0)
         self.epsilon*=0.999
 def main999():
-    EPISODES = 5000#5000
+    EPISODES = 5000
     env = gym.make('CartPole-v1')
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     agent = Agent(state_size,action_size)
-    done = False
     times=1
     for e in range(EPISODES):
         for time in range(500):
             state = env.reset()
             env.render()
-            action = agent.select_move(np.matrix(state))
-            state, reward, done, _ = env.step(action)
+            done = False
             while not done:
                 times +=1
                 action = agent.select_move(np.matrix(state))
                 next_state, reward, done , _ = env.step(action)
-                agent.memory.append((np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state))))
+                agent.update(np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state)))
                 state = next_state
             print(times)
             times=1
-            agent.update(np.matrix(state), action, reward + agent.gamma * agent.eval(np.matrix(next_state)))
 main999()
