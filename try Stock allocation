@@ -1,0 +1,99 @@
+import numpy as np
+import random
+from keras.models import Sequential
+from keras.layers import Dense, Activation
+from keras.optimizers import Adam
+class StochasticMDPEnv:
+    #current_state  is price[9~11],action  is  percentage of  stock in  total assets [0~10]
+    def __init__(self,current_state=10,smax=6,smin=0,rx=1,cy=12):
+        self.money_up_10 = False
+        self.current_state = current_state
+        self.smax=smax
+        self.smin=smin
+        self.rx = rx
+        self.cy=cy
+    def one_hot(self):
+        vector = np.zeros([self.rx, self.cy])
+        sto_int = int((self.current_state - self.smin - 0.0000001) * (self.rx * self.cy) / (self.smax - self.smin))
+        row_int = int(sto_int / self.cy)
+        colmn_int = sto_int - (row_int) * self.cy
+        vector[row_int][colmn_int] = 1
+        vector = np.expand_dims(vector, axis=0)
+        vector = np.matrix(vector)
+        return vector
+    def reset(self):
+        self.money_up_10 = False
+        self.current_state = 10
+        self.money=100000
+        self.stock=.0
+        self.m_reword=.0
+        self.x=0
+        return self.one_hot()
+    def step(self, action):
+        self.x+=np.pi/6
+        all_value=self.money+self.stock*self.current_state
+        self.stock=(all_value*action/10.0)/self.current_state
+        self.money=all_value-self.stock*self.current_state
+        self.m_reword=all_value/100000-1
+        self.current_state=np.sin(self.x)+10
+        if self.m_reword>0.1:
+            self.money_up_10 = True
+        return self.one_hot() , self.m_reword,self.money_up_10#
+def all_nn(
+    yinput=[[4,1],[4,1]],
+    layer_out=[[6,10],[6,1]],
+    layers=[[Dense,Dense],[Dense,Dense]],
+    l_init=[['lecun_uniform']*2,['lecun_uniform']*2],
+    l_activa=[["relu","softmax"],["relu","softmax"]],
+    l_loss=['mse','mse'],
+    l_optimizer=[Adam(),Adam()],
+    name1=['actor','critic']):
+    names=locals()
+    for i,c in enumerate(name1):
+        names[c]=Sequential()
+        names[c].add(layers[i][0](layer_out[i][0], kernel_initializer=l_init[i][0], input_shape=(yinput[i][0],)))
+        names[c].add(Activation(l_activa[i][0]))
+        for layer, init, node, activation in list(zip(layers[i],l_init[i], layer_out[i], l_activa[i]))[1:]:
+            names[c].add(layer(node, kernel_initializer=init, input_shape=(node,)))
+            names[c].add(Activation(activation))
+        names[c].compile(loss=l_loss[i], optimizer=l_optimizer[i], metrics=['accuracy'])#'mse'
+    return names[name1[0]],names[name1[1]]
+class Agent:
+    def __init__(self,state_size, action_size):
+        self.state_size = state_size
+        self.action_size = action_size
+        self.actor,self.critic  = all_nn(yinput=[[state_size,1],[state_size,1]],layer_out=[[60,action_size],[60,1]])
+        self.epsilon = 1
+        self.gamma = 0.96
+    def select_move(self, state):
+        if 1-self.epsilon+0.00001 > random.random():
+            return np.argmax(self.actor.predict(state, batch_size=32, verbose=0))
+        return random.randrange(self.action_size)
+    def eval(self, state):
+        return self.critic.predict(state, verbose=0)
+    def update(self, state, action, true_reward):
+        actor_reward = self.actor.predict(state)
+        actor_reward[0][action] = true_reward
+        self.critic.fit(state, true_reward, verbose=0)
+        self.actor.fit(state, actor_reward, verbose=0)
+        self.epsilon*=0.999
+def main999():
+    EPISODES = 5000
+    state_size = 12#env.observation_space.shape[0]
+    action_size =11# env.action_space.n
+    env = StochasticMDPEnv(smax=11,smin=9,cy=state_size)#state max is 11 min is 9 len is cy =11
+    agent = Agent(state_size,action_size)
+    times=1
+    for e in range(EPISODES):
+        for time in range(500):
+            state = env.reset()
+            done = False
+            while not done:
+                times +=1
+                action = agent.select_move(state)
+                next_state, reward, done = env.step(action)
+                agent.update(state, action, reward + agent.gamma * agent.eval(next_state))
+                state = next_state
+            print(times)
+            times=1
+main999()
