@@ -77,29 +77,27 @@ class Agent:
         self.actor.fit(state, actor_reward, verbose=0)
         self.epsilon*=0.999
 def main999():
-    EPISODES = 10
     state_size = 18#env.observation_space.shape[0]
     action_size =2# env.action_space.n
     env = StochasticMDPEnv(smax=11,smin=9,cy=state_size,action_size=action_size)#state max is 11 min is 9 len is cy =11
     agent = Agent(state_size,action_size)
     try:
         agent.actor.load_weights("./actor.h5")
-        agent.critic.load_weights("./actor.h5")
+        agent.critic.load_weights("./critic.h5")
     except:
         print("no weight")
     times=1
-    for e in range(EPISODES):
-        for time in range(500):
-            state = env.reset()
-            done = False
-            while not (done or times>1000):
-                times +=1
-                action = agent.select_move(state)
-                next_state, reward, done = env.step(action)
-                agent.update(state, action, reward + agent.gamma * agent.eval(next_state))
-                state = next_state
-            print(times)
-            times=1
-        agent.actor.save_weights("./actor.h5")
-        agent.critic.save_weights("./actor.h5")
+    for time in range(100):
+        state = env.reset()
+        done = False
+        while not (done or times>1000):
+            times +=1
+            action = agent.select_move(state)
+            next_state, reward, done = env.step(action)
+            agent.update(state, action, reward + agent.gamma * agent.eval(next_state))
+            state = next_state
+        print(times)
+        times=1
+    agent.actor.save_weights("./actor.h5")
+    agent.critic.save_weights("./critic.h5")
 main999()
