@@ -1,3 +1,4 @@
+
 # actor_critic--CartPole-v1-less-then-100
 add new Stock allocation (try Stock allocation );
 
@@ -12,6 +13,7 @@ action  is  percentage of  stock in  total assets [0~10],0 means no stock ,10 me
 动作是股票占比0~10，0表示清仓，10表示满仓;
 
 Too many action can not get result,you can change it by set [action_size =2]；
+
 太多调仓动作不收敛，现在可以自己调整了；
 
 code of actro_ctritic study from EthanMacdonald.
