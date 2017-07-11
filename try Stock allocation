@@ -1,17 +1,15 @@
 import numpy as np
 import random
 from keras.models import Sequential
-from keras.layers import Dense, Activation
+from keras.layers import Dense, Activation,Dropout
 from keras.optimizers import Adam
 class StochasticMDPEnv:
-    #current_state  is price[9~11],action  is  percentage of  stock in  total assets [0~10]
-    def __init__(self,current_state=10,smax=6,smin=0,rx=1,cy=12):
-        self.money_up_10 = False
-        self.current_state = current_state
+    def __init__(self,current_state=10,smax=6,smin=0,rx=1,cy=12,action_size=2):
         self.smax=smax
         self.smin=smin
         self.rx = rx
         self.cy=cy
+        self.action_size=action_size
     def one_hot(self):
         vector = np.zeros([self.rx, self.cy])
         sto_int = int((self.current_state - self.smin - 0.0000001) * (self.rx * self.cy) / (self.smax - self.smin))
@@ -32,7 +30,7 @@ class StochasticMDPEnv:
     def step(self, action):
         self.x+=np.pi/6
         all_value=self.money+self.stock*self.current_state
-        self.stock=(all_value*action/10.0)/self.current_state
+        self.stock=(all_value*action/(self.action_size-1))/self.current_state
         self.money=all_value-self.stock*self.current_state
         self.m_reword=all_value/100000-1
         self.current_state=np.sin(self.x)+10
@@ -56,6 +54,7 @@ def all_nn(
         for layer, init, node, activation in list(zip(layers[i],l_init[i], layer_out[i], l_activa[i]))[1:]:
             names[c].add(layer(node, kernel_initializer=init, input_shape=(node,)))
             names[c].add(Activation(activation))
+            names[c].add(Dropout(rate=0.9))
         names[c].compile(loss=l_loss[i], optimizer=l_optimizer[i], metrics=['accuracy'])#'mse'
     return names[name1[0]],names[name1[1]]
 class Agent:
@@ -78,17 +77,22 @@ class Agent:
         self.actor.fit(state, actor_reward, verbose=0)
         self.epsilon*=0.999
 def main999():
-    EPISODES = 5000
-    state_size = 12#env.observation_space.shape[0]
-    action_size =11# env.action_space.n
-    env = StochasticMDPEnv(smax=11,smin=9,cy=state_size)#state max is 11 min is 9 len is cy =11
+    EPISODES = 10
+    state_size = 18#env.observation_space.shape[0]
+    action_size =2# env.action_space.n
+    env = StochasticMDPEnv(smax=11,smin=9,cy=state_size,action_size=action_size)#state max is 11 min is 9 len is cy =11
     agent = Agent(state_size,action_size)
+    try:
+        agent.actor.load_weights("./actor.h5")
+        agent.critic.load_weights("./actor.h5")
+    except:
+        print("no weight")
     times=1
     for e in range(EPISODES):
         for time in range(500):
             state = env.reset()
             done = False
-            while not done:
+            while not (done or times>1000):
                 times +=1
                 action = agent.select_move(state)
                 next_state, reward, done = env.step(action)
@@ -96,4 +100,6 @@ def main999():
                 state = next_state
             print(times)
             times=1
+        agent.actor.save_weights("./actor.h5")
+        agent.critic.save_weights("./actor.h5")
 main999()
