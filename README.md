@@ -12,11 +12,10 @@ action  is  percentage of  stock in  total assets [0~10],0 means no stock ,10 me
 
 动作是股票占比0~10，0表示清仓，10表示满仓;
 
-Too many action can not get result,you can change it by set [action_size =2]；
+try a3c to adjust the stock
 
-太多调仓动作不收敛，现在可以自己调整了；
+改用a3c来调仓
 
-code of actro_ctritic study from EthanMacdonald.
+code of actro_ctritic study from EthanMacdonald.a3c copy from [莫烦Python] : https://morvanzhou.github.io/tutorials/
 
 代码主要来至EthanMacdonald.
-
