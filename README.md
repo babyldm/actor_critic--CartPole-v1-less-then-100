@@ -3,7 +3,7 @@ add new A3C for trader;
 
 增加了新的股票调整;
 
-The stock price is a sin+10 [9~10] ,volume is cos [0~1],make [sin,cos] as state
+The stock price is a sin+10：9~10 ,volume is cos：0~1,make sin and cos as state
 
 股票价格是sin+10，成交量是cos，两个参数作为state
 
