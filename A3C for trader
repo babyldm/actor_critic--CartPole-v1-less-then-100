@@ -3,29 +3,14 @@ Asynchronous Advantage Actor Critic (A3C) + RNN with continuous action space, Re
 The Pendulum example.
 View more on [莫烦Python] : https://morvanzhou.github.io/tutorials/
 Using:
-python3.5
 tensorflow 1.0
+gym 0.8.0
 """
 import multiprocessing #多线程
 import threading #线程
 import tensorflow as tf #神经病模块
 import numpy as np #科学计算模块
 import matplotlib.pyplot as plt
-N_WORKERS = multiprocessing.cpu_count() #计算有几个cpu可以调用
-MAX_EP_STEP = 400 #环境最大步数
-MAX_GLOBAL_EP = 800 #最大循环次数
-GLOBAL_NET_SCOPE = 'Global_Net' #总网络名
-UPDATE_GLOBAL_ITER = 5 #更新总网络步数
-GAMMA = 0.96 #奖励衰减度
-ENTROPY_BETA = 0.01
-LR_A = 0.01    # learning rate for actor0.0001
-LR_C = 0.1    # learning rate for critic0.001
-GLOBAL_RUNNING_R = []
-GLOBAL_EP = 0
-env =StochasticMDPEnv()#gym.make(GAME)
-N_S = 2#env.observation_space.shape[0] #3
-N_A = 1#env.action_space.shape[0] #1
-A_BOUND = [0, 1]# [-2,2]
 class StochasticMDPEnv:#sin +10 as  price  cos as volume
     def __init__(self):
         self.stock = .0
@@ -46,6 +31,22 @@ class StochasticMDPEnv:#sin +10 as  price  cos as volume
         self.current_state=np.sin(self.x)
         self.money_up_10 = True if self.m_reword>0 else False
         return np.array( [self.current_state,np.cos(self.x)] ), self.m_reword,self.money_up_10
+N_WORKERS = multiprocessing.cpu_count() #计算有几个cpu可以调用
+MAX_EP_STEP = 400 #环境最大步数
+MAX_GLOBAL_EP = 800 #最大循环次数
+GLOBAL_NET_SCOPE = 'Global_Net' #总网络名
+UPDATE_GLOBAL_ITER = 5 #更新总网络步数
+GAMMA = 0.96 #奖励衰减度
+ENTROPY_BETA = 0.01
+LR_A = 0.01    # learning rate for actor0.0001
+LR_C = 0.1    # learning rate for critic0.001
+GLOBAL_RUNNING_R = []
+GLOBAL_EP = 0
+env =StochasticMDPEnv()#gym.make(GAME)
+N_S = 2#env.observation_space.shape[0] #3
+N_A = 1#env.action_space.shape[0] #1
+A_BOUND = [0, 1]# [-2,2]
+
 # 这个 class 可以被调用生成一个 global net.
 #  也能被调用生成一个 worker 的 net, 因为他们的结构是一样的,
 # 所以这个 class 可以被重复利用.
