@@ -7,9 +7,9 @@ The stock price is a sin+10  9-10 ,volume is cos 0-1,make sin and cos as state
 
 股票价格是sin+10，成交量是cos，两个参数作为state
 
-action  is  percentage of  stock in  total assets [0~10],0 means no stock ,10 means no money;
+action  is  percentage of  stock in  total assets,0 means no stock ,1 means no money;
 
-动作是股票占比0~10，0表示清仓，10表示满仓;
+动作是股票占比0~1，0表示清仓，1表示满仓;
 
 try a3c to adjust the stock
 
