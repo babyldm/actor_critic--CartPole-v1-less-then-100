@@ -1,0 +1,208 @@
+"""
+Asynchronous Advantage Actor Critic (A3C) + RNN with continuous action space, Reinforcement Learning.
+The Pendulum example.
+View more on [莫烦Python] : https://morvanzhou.github.io/tutorials/
+Using:
+python3.5
+tensorflow 1.0
+"""
+import multiprocessing #多线程
+import threading #线程
+import tensorflow as tf #神经病模块
+import numpy as np #科学计算模块
+import matplotlib.pyplot as plt
+N_WORKERS = multiprocessing.cpu_count() #计算有几个cpu可以调用
+MAX_EP_STEP = 400 #环境最大步数
+MAX_GLOBAL_EP = 800 #最大循环次数
+GLOBAL_NET_SCOPE = 'Global_Net' #总网络名
+UPDATE_GLOBAL_ITER = 5 #更新总网络步数
+GAMMA = 0.96 #奖励衰减度
+ENTROPY_BETA = 0.01
+LR_A = 0.01    # learning rate for actor0.0001
+LR_C = 0.1    # learning rate for critic0.001
+GLOBAL_RUNNING_R = []
+GLOBAL_EP = 0
+env =StochasticMDPEnv()#gym.make(GAME)
+N_S = 2#env.observation_space.shape[0] #3
+N_A = 1#env.action_space.shape[0] #1
+A_BOUND = [0, 1]# [-2,2]
+class StochasticMDPEnv:#sin +10 as  price  cos as volume
+    def __init__(self):
+        self.stock = .0
+    def reset(self):
+        self.money_up_10 = False
+        self.current_state = .0
+        self.money=100000
+        self.stock=.0
+        self.m_reword=.0
+        self.x=0
+        return np.array( [self.current_state,np.cos(self.x)] )
+    def step(self, action):
+        self.x+=np.pi/180
+        all_value=self.money+self.stock*(self.current_state+10)
+        self.stock=(all_value*action)/(self.current_state+10)
+        self.money=all_value-self.stock*(self.current_state+10)
+        self.m_reword=all_value/100000-1.1
+        self.current_state=np.sin(self.x)
+        self.money_up_10 = True if self.m_reword>0 else False
+        return np.array( [self.current_state,np.cos(self.x)] ), self.m_reword,self.money_up_10
+# 这个 class 可以被调用生成一个 global net.
+#  也能被调用生成一个 worker 的 net, 因为他们的结构是一样的,
+# 所以这个 class 可以被重复利用.
+class ACNet(object):
+    def __init__(self, scope, globalAC=None):
+        # 这里传入的 globalAC 是当创建 worker 网络的时候, 传入的 global 网络
+        if scope == GLOBAL_NET_SCOPE:   # 判断当下建立的网络是 local 还是 global
+            with tf.variable_scope(scope): #如果是global就创建global的网络
+                self.s = tf.placeholder(tf.float32, [None, N_S], 'S')
+                self._build_net()
+                self.a_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/actor')
+                self.c_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/critic')
+        else:
+            # local net, calculate losses
+            # 接着计算 critic loss 和 actor loss
+            # 用这两个 loss 计算要推送的 gradients
+            with tf.variable_scope(scope):#如果是local网络创建local网络
+                self.s = tf.placeholder(tf.float32, [None, N_S], 'S')
+                self.a_his = tf.placeholder(tf.float32, [None, N_A], 'A')
+                self.v_target = tf.placeholder(tf.float32, [None, 1], 'Vtarget')
+                mu, sigma, self.v = self._build_net()
+                td = tf.subtract(self.v_target, self.v, name='TD_error')
+                with tf.name_scope('c_loss'):
+                    self.c_loss = tf.reduce_mean(tf.square(td))
+                with tf.name_scope('wrap_a_out'):
+                    mu, sigma = mu * A_BOUND[1], sigma + 1e-4
+                normal_dist = tf.contrib.distributions.Normal(mu, sigma)
+                with tf.name_scope('a_loss'):
+                    log_prob = normal_dist.log_prob(self.a_his)
+                    exp_v = log_prob * td
+                    entropy = normal_dist.entropy()  # encourage exploration
+                    self.exp_v = ENTROPY_BETA * entropy + exp_v
+                    self.a_loss = tf.reduce_mean(-self.exp_v)
+                with tf.name_scope('choose_a'):  # use local params to choose action
+                    self.A = tf.clip_by_value(tf.squeeze(normal_dist.sample(1), axis=0), A_BOUND[0], A_BOUND[1])
+                with tf.name_scope('local_grad'):
+                    self.a_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/actor')
+                    self.c_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/critic')
+                    self.a_grads = tf.gradients(self.a_loss, self.a_params)
+                    self.c_grads = tf.gradients(self.c_loss, self.c_params)
+
+            with tf.name_scope('sync'): # 同步
+                with tf.name_scope('pull'):#更新
+                    self.pull_a_params_op = [l_p.assign(g_p) for l_p, g_p in zip(self.a_params, globalAC.a_params)]
+                    self.pull_c_params_op = [l_p.assign(g_p) for l_p, g_p in zip(self.c_params, globalAC.c_params)]
+                with tf.name_scope('push'):# 获取 global参数
+                    self.update_a_op = OPT_A.apply_gradients(zip(self.a_grads, globalAC.a_params))
+                    self.update_c_op = OPT_C.apply_gradients(zip(self.c_grads, globalAC.c_params))
+
+    def _build_net(self): # 在这里搭建 Actor 和 Critic 的网络，返回均值，方差，状态值
+        w_init = tf.random_normal_initializer(0., .1)
+        with tf.variable_scope('critic'):   # only critic controls the rnn update
+            cell_size = 32
+            s = tf.expand_dims(self.s, axis=1,name='timely_input')  # [time_step, feature] => [time_step, batch, feature]
+            rnn_cell = tf.contrib.rnn.BasicRNNCell(cell_size)
+            self.init_state = rnn_cell.zero_state(batch_size=1, dtype=tf.float32)
+            outputs, self.final_state = tf.nn.dynamic_rnn(cell=rnn_cell, inputs=s, initial_state=self.init_state, time_major=True)
+            cell_out = tf.reshape(outputs, [-1, cell_size], name='flatten_rnn_outputs')  # joined state representation
+            l_c = tf.layers.dense(cell_out, 50, tf.nn.relu6, kernel_initializer=w_init, name='lc')
+            v = tf.layers.dense(l_c, 1, kernel_initializer=w_init, name='v')  # state value
+        with tf.variable_scope('actor'):  # state representation is based on critic
+            cell_out = tf.stop_gradient(cell_out, name='c_cell_out')    # from what critic think it is
+            l_a = tf.layers.dense(cell_out, 80, tf.nn.relu6, kernel_initializer=w_init, name='la')
+            mu = tf.layers.dense(l_a, N_A, tf.nn.tanh, kernel_initializer=w_init, name='mu')
+            sigma = tf.layers.dense(l_a, N_A, tf.nn.softplus, kernel_initializer=w_init, name='sigma')
+        return mu, sigma, v
+
+    def update_global(self, feed_dict):  # run by a local 进行push操作
+        SESS.run([self.update_a_op, self.update_c_op], feed_dict)  # local grads applies to global net
+
+    def pull_global(self):  # run by a local 进行pull 操作
+        SESS.run([self.pull_a_params_op, self.pull_c_params_op])
+
+    def choose_action(self, s, cell_state):  # run by a local根据状态选择动作
+        s = s[np.newaxis, :]
+        a, cell_state = SESS.run([self.A, self.final_state], {self.s: s, self.init_state: cell_state})
+        return a[0], cell_state
+
+class Worker(object):
+    def __init__(self, name, globalAC):
+        self.env = StochasticMDPEnv()#gym.make(GAME).unwrapped创建自己环境
+        self.name = name #并命名一个名字
+        self.AC = ACNet(name, globalAC)#自己的 local net, 并绑定上 globalAC
+    def work(self):
+        global GLOBAL_RUNNING_R, GLOBAL_EP
+        total_step = 1
+        # s, a, r 的缓存, 用于 n_steps 更新
+        buffer_s, buffer_a, buffer_r = [], [], []
+        while not COORD.should_stop() and GLOBAL_EP < MAX_GLOBAL_EP:
+            s = self.env.reset()
+            ep_r = 0
+            rnn_state = SESS.run(self.AC.init_state)    # zero rnn state at beginning
+            keep_state = rnn_state.copy()       # keep rnn state for updating global net
+            for ep_t in range(MAX_EP_STEP):
+                a, rnn_state_ = self.AC.choose_action(s, rnn_state)  # get the action and next rnn state
+                s_, r, done = self.env.step(a)
+                done = True if ep_t == MAX_EP_STEP - 1 else False
+                r /= 1.1     # normalize reward
+                ep_r += r
+                buffer_s.append(s) #添加状态缓存
+                buffer_a.append(a) #添加动作缓存
+                buffer_r.append(r) #添加奖励缓存
+                # 每 UPDATE_GLOBAL_ITER 步 或者回合完了, 进行 sync 操作
+                if total_step % UPDATE_GLOBAL_ITER == 0 or done:   # update global and assign to local net
+                    # 获得用于计算 TD error 的 下一 state 的 value
+                    if done:
+                        v_s_ = 0   # terminal
+                    else:
+                        v_s_ = SESS.run(self.AC.v, {self.AC.s: s_[np.newaxis, :], self.AC.init_state: rnn_state_})[0, 0]
+                    buffer_v_target = [] # 下 一个state value 的缓存, 用于算 TD
+                    for r in buffer_r[::-1]:    # reverse buffer r  进行 n_steps forward view
+                        v_s_ = r + GAMMA * v_s_
+                        buffer_v_target.append(v_s_)
+                    buffer_v_target.reverse()
+                    buffer_s, buffer_a, buffer_v_target = np.vstack(buffer_s), np.vstack(buffer_a), np.vstack(buffer_v_target)
+                    feed_dict = {
+                        self.AC.s: buffer_s,
+                        self.AC.a_his: buffer_a,
+                        self.AC.v_target: buffer_v_target,
+                        self.AC.init_state: keep_state,
+                    }
+                    self.AC.update_global(feed_dict)  # 推送更新去 globalAC
+                    buffer_s, buffer_a, buffer_r = [], [], [] # 清空缓存
+                    self.AC.pull_global() # 获取 globalAC 的最新参数
+                    keep_state = rnn_state_.copy()   # replace the keep_state as the new initial rnn state_
+                s = s_
+                rnn_state = rnn_state_  # renew rnn state  更新rnn的状态
+                total_step += 1
+                if done:
+                    if len(GLOBAL_RUNNING_R) == 0:  # record running episode reward
+                        GLOBAL_RUNNING_R.append(ep_r)
+                    else:
+                        GLOBAL_RUNNING_R.append(0.9 * GLOBAL_RUNNING_R[-1] + 0.1 * ep_r)
+                    #print(self.name,"Ep:", GLOBAL_EP,"| Ep_r: %i" % GLOBAL_RUNNING_R[-1],)
+                    GLOBAL_EP += 1 #加一回合
+                    break #结束这个回合
+if __name__ == "__main__":
+    SESS = tf.Session()
+    with tf.device("/cpu:0"): #这里指定cpu运行，也可以指定gpu
+        OPT_A = tf.train.RMSPropOptimizer(LR_A, name='RMSPropA')
+        OPT_C = tf.train.RMSPropOptimizer(LR_C, name='RMSPropC')
+        GLOBAL_AC = ACNet(GLOBAL_NET_SCOPE)  # we only need its params  建立 Global AC
+        workers = []
+        # Create worker
+        for i in range(N_WORKERS): #按cpu数量创建 worker, 之后在并行
+            i_name = 'W_%i' % i   # worker name
+            workers.append(Worker(i_name, GLOBAL_AC)) # 每个 worker 都有共享这个 global AC，并取名
+    COORD = tf.train.Coordinator() # Tensorflow 用于并行的工具
+    SESS.run(tf.global_variables_initializer())
+    worker_threads = []
+    for worker in workers:
+        job = lambda: worker.work()
+        t = threading.Thread(target=job) # 添加一个工作线程
+        t.start()
+        worker_threads.append(t)
+    COORD.join(worker_threads) # tf 的线程调度
+    plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
+    plt.xlabel('step')
+    plt.ylabel('Total moving reward')
+    plt.show()
