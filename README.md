@@ -1,12 +1,11 @@
-
-# actor_critic--CartPole-v1-less-then-100
-add new Stock allocation (try Stock allocation );
+# A3C for trader
+add new A3C for trader;
 
 增加了新的股票调整;
 
-The stock price is between 9 and 10, assuming it is the sin function as state [0,0,0,0,0,0,0,0,0,0,0,1] to [1,0,0,0,0,0,0,0,0,0,0,0];
+The stock price is a sin+10 [9~10] ,volume is cos [0~1],make [sin,cos] as state
 
-股价在9到10块，假定是一个sin波作为状态，编码为[0,0,0,0,0,0,0,0,0,0,0,1] to [1,0,0,0,0,0,0,0,0,0,0,0]；
+股票价格是sin+10，成交量是cos，两个参数作为state
 
 action  is  percentage of  stock in  total assets [0~10],0 means no stock ,10 means no money;
 
@@ -16,6 +15,6 @@ try a3c to adjust the stock
 
 改用a3c来调仓
 
-code of actro_ctritic study from EthanMacdonald.a3c copy from [莫烦Python] : https://morvanzhou.github.io/tutorials/
+code of A3C study from EthanMacdonald.a3c copy from [莫烦Python] : https://morvanzhou.github.io/tutorials/
 
-代码主要来至EthanMacdonald.
+代码主要来至莫烦https://morvanzhou.github.io/tutorials/
