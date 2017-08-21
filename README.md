@@ -15,6 +15,14 @@ try a3c to adjust the stock
 
 改用a3c来调仓
 
-code of A3C study from EthanMacdonald.a3c copy from [莫烦Python] : https://morvanzhou.github.io/tutorials/
+code of A3C study from  [莫烦Python] : https://morvanzhou.github.io/tutorials/
 
 代码主要来至莫烦https://morvanzhou.github.io/tutorials/
+
+add new ppo for trade
+
+增加了PPO交易
+
+if you like me you can add me qq:56376595
+
+如果你喜欢我可以联想我，qq：56376595
